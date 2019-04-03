@@ -1,52 +1,50 @@
--- Recherche le user avec username = "Default Owner"
--- Si il existe alors retourne le user 
--- Sinon on le créer le user avec username = "Default Owner" Puis on retourne le user créé
+-- rechercher le user avec username = "Default_owner"
+-- Si il existe alors retourne le user
+-- Sinon 
+--   On créé le user avec username = "Default_owner"
+--   On retourne le user créé
+CREATE OR REPLACE FUNCTION get_default_owner() RETURNS "user" AS $$
 
-CREATE OR REPLACE FUNCTION get_default_owner() RETURNS "user" AS $$ 
+DECLARE
 
+  defaultOwner "user"%rowtype;
+  defaultOwnerUsername varchar(50) := 'Default Owner';
+  
+BEGIN
 
-    DECLARE 
+  SELECT * INTO defaultOwner
+  FROM "user"
+  WHERE username = defaultOwnerUsername;
 
-        defaultOwner "user"%rowtype;
-        defaultOwnerUsername varchar(50) := 'Default Owner';
-
-    BEGIN
-
-    -- Rechercher si get_default_owner.owner existe dans la BD 
-    SELECT * INTO defaultOwner FROM "user"
+  if not found then
+    INSERT INTO "user" (id, username)
+    VALUES (nextval('id_generator'), defaultOwnerUsername);
+    SELECT * INTO defaultOwner
+    FROM "user"
     WHERE username = defaultOwnerUsername;
+  end if;
+  RETURN defaultOwner;
+END
+  
+$$ LANGUAGE plpgsql;
 
-    -- Si la recherche retourne une ligne on rentre dans le IF
-    IF not found THEN
+CREATE OR REPLACE FUNCTION fix_activities_without_owner() RETURNS SETOF activity AS $$
 
-        INSERT INTO "user" (id, username)
-        VALUES (nextval('id_generator'), defaultOwnerUsername);
+DECLARE
+  
+  defaultOwner "user"%rowtype;
+  nowDate date = now();
 
-       SELECT * INTO defaultOwner from "user"
-       WHERE username = defaultOwnerUsername;
+BEGIN
+  
+  defaultOwner := get_default_owner();
+  RETURN QUERY
+  UPDATE activity
+  SET owner_id = defaultOwner.id,
+      modification_date = nowDate
+      WHERE owner_id IS NULL
+      RETURNING *;
 
-    END IF;
-    RETURN defaultOwner 
+END
 
-    END;
-
-$$ LANGUAGE PLPGSQL;
-
-CREATE OR REPLACE FUNCTION fix_activities_whithout_owner() RETURNS SETOF activity AS $$
-
-    DECLARE
-
-    defaultOwner "user"%rowtype;
-    nowDate date = now();
-
-    BEGIN
-    defaultOwner := get_default_owner();
-    return query
-    update activity 
-    SET owner_id = defaultOwner.id, modification_date = nowDate
-        where owner_id IS NULL
-        returning *;
-
-    END
-
-$$ LANGUAGE plpgsql
+$$ LANGUAGE plpgSQL;
